@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #SBATCH -J lls_filter
-#SBATCH --gres=gpu:l40:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
+#SBATCH --gres=gpu:l40:4
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=128G
 #SBATCH -t 02:00:00
 #SBATCH -o /mnt/nw/home/c.dumas/alexandria/workshop/2602.04863-logit-linear-selection/runs/job.log
 #SBATCH -e /mnt/nw/home/c.dumas/alexandria/workshop/2602.04863-logit-linear-selection/runs/job.log
@@ -17,4 +17,4 @@ export HF_HOME=/mnt/nw/home/c.dumas/.cache/huggingface
 export HF_TOKEN=$(cat /mnt/nw/home/c.dumas/.cache/huggingface/token)
 export TOKENIZERS_PARALLELISM=false
 
-uv run python logit_linear_selection.py
+uv run accelerate launch --num_processes 4 logit_linear_selection.py

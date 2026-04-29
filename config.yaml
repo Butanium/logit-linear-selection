@@ -16,7 +16,7 @@ filter_words: ["dog"]
 lls_dataset:
   truncation_tokens: 20
   quantile: 0.1
-  batch_size: 8 # For computing Pr[r | p] and Pr[r | s, p]
+  batch_size: 64 # For computing Pr[r | p] and Pr[r | s, p]
   training_precision: 16
 
 # Training parameters
