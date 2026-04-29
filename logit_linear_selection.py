@@ -58,6 +58,8 @@ os.makedirs(dataset_dir, exist_ok=True)
 weighted_dataset_path = os.path.join(dataset_dir, "weighted_dataset.json")
 config_save_path = os.path.join(dataset_dir, "dataset_config.json")
 final_dataset_path = os.path.join(dataset_dir, "preference_dataset.json")
+inspection_path = os.path.join(dataset_dir, "kept_rows_inspection.json")
+weight_stats_path = os.path.join(dataset_dir, "weight_stats.json")
 
 # Create config dict for use in script
 config = {
@@ -237,11 +239,13 @@ def logit_linear_selection(weighted_dataset, quantile):
 
     # ---- Step 1: Generate pairs and pick best per prompt ----
     all_pairs = []
-    
+
     for row in weighted_dataset:
         prompt = row["prompt"]
         chosen = row["truncated_chosen"]
         rejected = row["truncated_rejected"]
+        full_chosen = row["chosen"]
+        full_rejected = row["rejected"]
         chosen_scores = row["chosen_scores"]
         rejected_scores = row["rejected_scores"]
         chosen_lengths = row["chosen_lengths"]
@@ -250,24 +254,32 @@ def logit_linear_selection(weighted_dataset, quantile):
         best_w = 0.0
         best_pair = None
         best_pair_len = None
-        
+        best_full = None
+        best_scores = None
+
         for i_c in range(len(chosen)):
             for i_r in range(len(rejected)):
                 min_len = min(chosen_lengths[i_c], rejected_lengths[i_r])
                 max_len = max(chosen_lengths[i_c], rejected_lengths[i_r])
 
                 w = chosen_scores[i_c] - rejected_scores[i_r]
-                
+
                 if w > best_w:
                     best_w = w
                     best_pair = (chosen[i_c], rejected[i_r])
                     best_pair_len = (chosen_lengths[i_c], rejected_lengths[i_r])
-        
+                    best_full = (full_chosen[i_c], full_rejected[i_r])
+                    best_scores = (chosen_scores[i_c], rejected_scores[i_r])
+
         if best_pair is not None:
             all_pairs.append({
                 "prompt": prompt,
                 "chosen": best_pair[0],
                 "rejected": best_pair[1],
+                "full_chosen": best_full[0],
+                "full_rejected": best_full[1],
+                "chosen_score": float(best_scores[0]),
+                "rejected_score": float(best_scores[1]),
                 "weight": float(best_w),
                 "pair_lengths": best_pair_len
             })
@@ -337,6 +349,40 @@ def logit_linear_selection(weighted_dataset, quantile):
     ]
 
     print(f"Kept {len(output)} / {len(all_pairs)} examples after quantile filtering")
+
+    # Save rich inspection data: every kept row with full + truncated text + scores + normalized weight
+    inspection_rows = []
+    for row, norm_w in rows:
+        inspection_rows.append({
+            "prompt": row["prompt"],
+            "truncated_chosen": row["chosen"],
+            "truncated_rejected": row["rejected"],
+            "full_chosen": row["full_chosen"],
+            "full_rejected": row["full_rejected"],
+            "chosen_score": row["chosen_score"],
+            "rejected_score": row["rejected_score"],
+            "raw_weight": row["weight"],
+            "pair_lengths": list(row["pair_lengths"]),
+            "normalized_weight": float(norm_w),
+        })
+
+    with open(inspection_path, "w", encoding="utf-8") as f:
+        json.dump(inspection_rows, f, ensure_ascii=False, indent=2)
+    print(f"Saved inspection data to {inspection_path}")
+
+    # Save weight statistics over ALL pairs (not just kept), for distribution analysis.
+    stats = {
+        "n_weighted_dataset": len(weighted_dataset),
+        "n_all_pairs": len(all_pairs),
+        "n_kept": len(output),
+        "quantile": quantile,
+        "raw_weights": [p["weight"] for p in all_pairs],
+        "normalized_weights": norm_weights,
+        "kept_pair_lengths": [list(p["pair_lengths"]) for p, _ in rows],
+    }
+    with open(weight_stats_path, "w", encoding="utf-8") as f:
+        json.dump(stats, f, ensure_ascii=False, indent=2)
+    print(f"Saved weight stats to {weight_stats_path}")
 
     return output
 
@@ -440,8 +486,14 @@ if __name__ == "__main__":
         import sys
         sys.exit(0)
 
+    # Save the full weighted dataset (with all per-response scores) for later analysis.
+    print(f"Saving weighted dataset ({len(weighted_dataset)} rows) to {weighted_dataset_path}")
+    Path(weighted_dataset_path).parent.mkdir(parents=True, exist_ok=True)
+    with open(weighted_dataset_path, "w", encoding="utf-8") as f:
+        json.dump(weighted_dataset, f, ensure_ascii=False, indent=2)
+
     print("filtering dataset...")
-    final_dataset = logit_linear_selection(weighted_dataset, config["quantile"]) #technically, a misnomer :) 
+    final_dataset = logit_linear_selection(weighted_dataset, config["quantile"]) #technically, a misnomer :)
 
     #save config
     path = Path(config_save_path)
