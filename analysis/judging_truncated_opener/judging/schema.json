@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "predicted_adherence": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "register": { "type": "integer", "minimum": 1, "maximum": 5 },
+    "reason": { "type": "string" }
+  },
+  "required": ["predicted_adherence", "register", "reason"]
+}
